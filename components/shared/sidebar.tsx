@@ -1,0 +1,194 @@
+"use client";
+
+import * as React from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
+import {
+  LayoutDashboard,
+  Users,
+  FileWarning,
+  Calendar,
+  Camera,
+  Settings,
+  Menu,
+  X,
+  MapPin,
+  Shield,
+  LogOut,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { useSidebarStore } from "@/lib/store";
+import { useThemeStore } from "@/lib/store";
+
+export interface NavItem {
+  icon: React.ElementType;
+  label: string;
+  href: string;
+  badge?: number;
+}
+
+interface SidebarProps {
+  navItems: NavItem[];
+  userRole: string;
+  userName: string;
+}
+
+export function Sidebar({ navItems, userRole, userName }: SidebarProps) {
+  const { isOpen, toggle } = useSidebarStore();
+  const pathname = usePathname();
+  const { isDark, toggle: toggleTheme } = useThemeStore();
+
+  return (
+    <>
+      {/* Mobile overlay */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => useSidebarStore.getState().close()}
+        />
+      )}
+
+        <aside
+          className={cn(
+            "fixed top-0 left-0 z-50 h-screen bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 transition-all duration-300 ease-in-out flex flex-col shadow-sm",
+            isOpen ? "w-64" : "w-[72px]"
+          )}
+        >
+        {/* Header */}
+        <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200 dark:border-gray-800 shrink-0 bg-white dark:bg-gray-950 transition-colors duration-300">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center flex-shrink-0">
+              <Shield className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            {isOpen && (
+              <div className="overflow-hidden">
+                <h2 className="font-bold text-sm leading-tight text-gray-900 dark:text-gray-100">
+                  Irondo
+                </h2>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                  Security System
+                </p>
+              </div>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 lg:hidden text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-800"
+            onClick={toggle}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {/* Navigation */}
+        <nav className="flex-1 flex flex-col overflow-y-auto py-2">
+          <div className="px-2 space-y-1">
+            {navItems.map((item) => {
+              const isActive = pathname === item.href;
+              return (
+                 <Link
+                   key={item.href}
+                   href={item.href}
+                   className={cn(
+                     "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-200",
+                     isOpen ? "justify-start" : "justify-center px-2",
+                     isActive
+                       ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400"
+                       : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-900 dark:hover:text-gray-100"
+                   )}
+                 >
+                  <item.icon className="h-4 w-4 shrink-0" />
+                  {isOpen && (
+                    <>
+                      <span className="flex-1 text-left truncate">
+                        {item.label}
+                      </span>
+                      {item.badge && (
+                        <Badge
+                          variant={
+                            item.badge > 5 ? "destructive" : "secondary"
+                          }
+                          className="h-5 w-5 rounded-full p-0 flex items-center justify-center text-[10px]"
+                        >
+                          {item.badge}
+                        </Badge>
+                      )}
+                    </>
+                  )}
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+
+        {/* User Profile */}
+        {isOpen && (
+          <div className="p-3 border-t border-gray-200 dark:border-gray-800 shrink-0 bg-white dark:bg-gray-950 transition-colors duration-300">
+            <div className="flex items-center gap-3 px-1">
+              <Avatar className="h-8 w-8 bg-emerald-100 dark:bg-emerald-900/30">
+                <AvatarFallback className="text-xs text-emerald-700 dark:text-emerald-400">
+                  {userName.charAt(0)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate text-gray-900 dark:text-gray-100">{userName}</p>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">
+                  {userRole}
+                </p>
+              </div>
+               <div className="flex flex-col gap-1">
+                 <Button
+                   variant="ghost"
+                   size="icon"
+                   className="h-7 w-7 text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-800"
+                   onClick={toggleTheme}
+                   title={isDark ? "Light mode" : "Dark mode"}
+                 >
+                   {isDark ? (
+                     <MapPin className="h-4 w-4 rotate-45" />
+                   ) : (
+                     <MapPin className="h-4 w-4" />
+                   )}
+                 </Button>
+                 {/* TODO: Connect to backend auth for logout */}
+                 <Link href="/auth/login" title="Logout">
+                   <Button
+                     variant="ghost"
+                     size="icon"
+                     className="h-7 w-7 text-gray-500 hover:text-red-600 hover:bg-red-50 dark:text-gray-400 dark:hover:text-red-400 dark:hover:bg-red-900/20"
+                     onClick={() => {
+                       // TODO: Implement proper session clearing
+                       console.log("Logging out...");
+                       // localStorage.removeItem('session');
+                     }}
+                   >
+                     <LogOut className="h-4 w-4" />
+                   </Button>
+                 </Link>
+               </div>
+            </div>
+          </div>
+        )}
+
+         {/* Mobile toggle button */}
+         {!isOpen && (
+           <div className="p-2 border-t border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 transition-colors duration-300">
+             <Button
+               variant="ghost"
+               size="icon"
+               className="h-8 w-8 mx-auto text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-800"
+               onClick={toggle}
+             >
+               <Menu className="h-4 w-4" />
+             </Button>
+           </div>
+         )}
+      </aside>
+    </>
+  );
+}
