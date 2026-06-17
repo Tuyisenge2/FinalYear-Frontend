@@ -16,7 +16,10 @@ export class ApiError extends Error {
   }
 }
 
-const axiosClient = axios.create({ baseURL: API_URL });
+const axiosClient = axios.create({
+  baseURL: API_URL,
+  headers: { "ngrok-skip-browser-warning": "true" },
+});
 
 axiosClient.interceptors.request.use((config) => {
   const { token, user } = useAuthStore.getState();
