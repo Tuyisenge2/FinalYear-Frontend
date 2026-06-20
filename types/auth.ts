@@ -76,6 +76,44 @@ export interface PatrolCheckpoint {
   guardId?: string;
 }
 
+export interface DashboardAlert {
+  id: string;
+  message: string;
+  camera_id: string;
+  confidence: number;
+  sent_at: string;
+  status: "sent" | "failed" | "pending";
+}
+
+export interface DashboardPatrolLog {
+  guard_name: string;
+  latitude: number | null;
+  longitude: number | null;
+  recorded_at: string | null;
+  status: string;
+}
+
+export interface DashboardStats {
+  total_guards: number;
+  guards_on_duty: number;
+  active_incidents: number;
+  cameras_online: number;
+  active_alerts: DashboardAlert[];
+  recent_patrol_logs: DashboardPatrolLog[];
+}
+
+export interface EvidenceResponse {
+  id: string;
+  detection_id: string;
+  camera_id: string;
+  file_type: "image" | "video";
+  cloudinary_url: string;
+  file_size_bytes: number | null;
+  duration_seconds: number | null;
+  violent_frames: number | null;
+  uploaded_at: string;
+}
+
 export interface Alert {
   id: string;
   type: string;

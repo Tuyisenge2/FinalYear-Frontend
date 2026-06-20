@@ -20,8 +20,8 @@ const adminNavItems: NavItem[] = [
   { icon: Users, label: "Guards", href: "/admin/guards" },
   { icon: Clock3, label: "Shifts", href: "/admin/shifts" },
   { icon: FileWarning, label: "Incidents", href: "/admin/incidents" },
-  { icon: Calendar, label: "Patrol", href: "/admin/patrol" },
-  { icon: Camera, label: "Cameras", href: "/admin/cameras" },
+  // { icon: Calendar, label: "Patrol", href: "/admin/patrol" },
+  // { icon: Camera, label: "Cameras", href: "/admin/cameras" },
   { icon: Settings, label: "Settings", href: "/admin/settings" },
 ];
 

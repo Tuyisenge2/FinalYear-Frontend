@@ -1,8 +1,8 @@
 import axios, { AxiosError, AxiosRequestConfig } from "axios";
 import { useAuthStore } from "@/lib/auth/auth-store";
 
-const API_URL = "https://satiable-celibate-reprocess.ngrok-free.dev/";
-console.log("[apiClient] API_URL:", API_URL);
+const API_URL = process.env.NEXT_PUBLIC_API_URL;
+if (!API_URL) throw new Error("Missing required environment variable: NEXT_PUBLIC_API_URL");
 
 
 export class ApiError extends Error {
@@ -18,8 +18,17 @@ export class ApiError extends Error {
 
 const axiosClient = axios.create({
   baseURL: API_URL,
+  timeout: 10_000,
   headers: { "ngrok-skip-browser-warning": "true" },
 });
+
+// Only these endpoints need organization_id scoping
+const ORG_SCOPED_ENDPOINTS = [
+  "/auth/users",
+  "/guards/locations",
+  "/shifts",
+  "/dashboard/stats",
+];
 
 axiosClient.interceptors.request.use((config) => {
   const { token, user } = useAuthStore.getState();
@@ -27,11 +36,11 @@ axiosClient.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${token}`;
   }
 
-  // Auto-propagate the user's organization to any request that didn't
-  // already set it explicitly, so org-scoped endpoints (GET /guards/locations,
-  // /auth/users, /shifts, etc.) get filtered without every call site having
-  // to remember to pass organization_id.
-  if (user?.organizationId && !config.params?.organization_id) {
+  const needsOrgId = ORG_SCOPED_ENDPOINTS.some((endpoint) =>
+    config.url?.startsWith(endpoint)
+  );
+
+  if (needsOrgId && user?.organizationId && !config.params?.organization_id) {
     config.params = { ...config.params, organization_id: user.organizationId };
   }
 

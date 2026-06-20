@@ -1,55 +1,105 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Camera, AlertCircle, ShieldCheck, MapPin as MapPinIcon, Users, Phone, Loader2 } from "lucide-react";
 import { GuardTrackerMap } from "@/components/admin/guard-tracker-map";
 import { useAuthStore } from "@/lib/auth/auth-store";
 import { listGuards, BackendUser } from "@/lib/services/user-service";
 import { getOnDutyGuards, OnDutyGuard } from "@/lib/services/shift-service";
+import { getDashboardStats } from "@/lib/services/dashboard-service";
 import { getAuthErrorMessage } from "@/lib/services/auth-service";
+import { DashboardStats } from "@/types/auth";
+
+const POLL_MS = 30_000;
+
+function relativeTime(iso: string) {
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (diff < 60) return `${diff}s ago`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  return `${Math.floor(diff / 3600)}h ago`;
+}
 
 export default function AdminDashboardPage() {
   const adminName = useAuthStore((state) => state.user?.name);
 
   const [guards, setGuards] = useState<BackendUser[]>([]);
   const [onDutyGuards, setOnDutyGuards] = useState<OnDutyGuard[]>([]);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     let isUnmounted = false;
-    (async () => {
+
+    const fetchAll = async () => {
       try {
-        const [guardList, onDuty] = await Promise.all([listGuards(), getOnDutyGuards()]);
+        const [guardList, onDuty, dashStats] = await Promise.all([
+          listGuards(),
+          getOnDutyGuards(),
+          getDashboardStats(),
+        ]);
         if (!isUnmounted) {
           setGuards(guardList);
           setOnDutyGuards(onDuty);
+          setStats(dashStats);
         }
       } catch (err) {
         if (!isUnmounted) setError(getAuthErrorMessage(err));
       } finally {
         if (!isUnmounted) setLoading(false);
       }
-    })();
+    };
+
+    fetchAll();
+    intervalRef.current = setInterval(fetchAll, POLL_MS);
+
     return () => {
       isUnmounted = true;
+      if (intervalRef.current) clearInterval(intervalRef.current);
     };
   }, []);
 
   const onDutyNames = new Set(onDutyGuards.map((g) => g.guard_name));
-  const onDutyPercent = guards.length > 0 ? Math.round((onDutyGuards.length / guards.length) * 100) : 0;
+  const totalGuards = stats?.total_guards ?? guards.length;
+  const guardsOnDuty = stats?.guards_on_duty ?? onDutyGuards.length;
+  const onDutyPercent = totalGuards > 0 ? Math.round((guardsOnDuty / totalGuards) * 100) : 0;
 
   const kpis = [
-    { title: "Total Guards", value: guards.length, change: undefined, icon: Users, color: "bg-blue-500" },
-    { title: "Guards on Duty", value: onDutyGuards.length, change: `${onDutyPercent}% active`, icon: ShieldCheck, color: "bg-emerald-500" },
-    { title: "Active Incidents", value: 2, change: "+1 new", icon: AlertCircle, color: "bg-orange-500" },
-    { title: "Cameras Online", value: "3/4", change: "-1 offline", icon: Camera, color: "bg-violet-500" },
+    {
+      title: "Total Guards",
+      value: totalGuards,
+      change: undefined,
+      icon: Users,
+      color: "bg-blue-500",
+    },
+    {
+      title: "Guards on Duty",
+      value: guardsOnDuty,
+      change: `${onDutyPercent}% active`,
+      icon: ShieldCheck,
+      color: "bg-emerald-500",
+    },
+    {
+      title: "Active Incidents",
+      value: stats?.active_incidents ?? "—",
+      change: stats && stats.active_incidents > 0 ? `+${stats.active_incidents} new` : undefined,
+      icon: AlertCircle,
+      color: "bg-orange-500",
+    },
+    {
+      title: "Cameras Online",
+      value: stats ? `${stats.cameras_online}` : "—",
+      change: undefined,
+      icon: Camera,
+      color: "bg-violet-500",
+    },
   ];
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header Banner */}
-      <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border-b border-emerald-100 px-6 py-5">
+      <div className="bg-linear-to-r from-emerald-50 to-teal-50 border-b border-emerald-100 px-6 py-5">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold tracking-tight text-gray-900">
@@ -82,8 +132,12 @@ export default function AdminDashboardPage() {
                 <div className="flex items-start justify-between">
                   <div className="space-y-1">
                     <p className="text-sm text-gray-500">{kpi.title}</p>
-                    <p className="text-2xl font-bold text-gray-900">{kpi.value}</p>
-                    {kpi.change && (
+                    {loading ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-gray-300 mt-1" />
+                    ) : (
+                      <p className="text-2xl font-bold text-gray-900">{kpi.value}</p>
+                    )}
+                    {kpi.change && !loading && (
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${kpi.change.startsWith("+") ? "bg-green-50 text-green-600" : "bg-amber-50 text-amber-600"}`}>
                         {kpi.change}
                       </span>
@@ -102,12 +156,11 @@ export default function AdminDashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left: Map & Analytics */}
           <div className="lg:col-span-2 space-y-4">
-            {/* Live Guard Tracker Map */}
             <GuardTrackerMap />
 
             <div className="bg-white rounded-2xl border border-gray-200 p-5">
               <h2 className="text-base font-semibold mb-4 text-gray-900">Incident Analytics</h2>
-              <div className="h-48 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200 flex items-center justify-center">
+              <div className="h-48 bg-linear-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200 flex items-center justify-center">
                 <p className="text-sm text-gray-400">Charts Component</p>
               </div>
             </div>
@@ -115,20 +168,39 @@ export default function AdminDashboardPage() {
 
           {/* Right Panel */}
           <div className="space-y-4">
-            {/* Alert Panel */}
+            {/* Active Alerts */}
             <div className="bg-white rounded-2xl border border-gray-200 p-4">
               <h3 className="text-sm font-semibold mb-3 text-gray-900">Active Alerts</h3>
-              <div className="space-y-2">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="p-3 rounded-xl border border-gray-100 bg-amber-50 flex items-start gap-3">
-                    <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-gray-900">Suspicious activity detected</p>
-                      <p className="text-xs text-gray-500 mt-0.5">Sector 4 • 10 min ago</p>
+              {loading ? (
+                <div className="flex items-center justify-center p-6">
+                  <Loader2 className="h-4 w-4 animate-spin text-emerald-500" />
+                </div>
+              ) : !stats || stats.active_alerts.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center py-4">No active alerts</p>
+              ) : (
+                <div className="space-y-2">
+                  {stats.active_alerts.map((alert) => (
+                    <div
+                      key={alert.id}
+                      className={`p-3 rounded-xl border flex items-start gap-3 ${
+                        alert.status === "failed"
+                          ? "bg-red-50 border-red-100"
+                          : "bg-amber-50 border-amber-100"
+                      }`}
+                    >
+                      <AlertCircle className={`h-4 w-4 mt-0.5 shrink-0 ${
+                        alert.status === "failed" ? "text-red-500" : "text-amber-600"
+                      }`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-gray-900 truncate">{alert.message}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {alert.camera_id} • {relativeTime(alert.sent_at)}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Guard List */}
@@ -163,7 +235,7 @@ export default function AdminDashboardPage() {
             </div>
 
             {/* Emergency Contacts */}
-            <div className="bg-gradient-to-br from-red-50 to-red-100/50 rounded-2xl border border-red-200 p-4">
+            <div className="bg-linear-to-br from-red-50 to-red-100/50 rounded-2xl border border-red-200 p-4">
               <h3 className="text-sm font-semibold mb-3 flex items-center gap-2 text-red-700">
                 <Phone className="h-4 w-4" /> Emergency Contacts
               </h3>
@@ -191,33 +263,43 @@ export default function AdminDashboardPage() {
         {/* Patrol Logs */}
         <div className="bg-white rounded-2xl border border-gray-200 p-5">
           <h2 className="text-base font-semibold mb-4 text-gray-900">Recent Patrol Logs</h2>
-          <div className="space-y-2">
-            {[
-              { time: "10:30 AM", guard: "Emmanuel N.", sector: "Kinyinya", status: "Completed" },
-              { time: "09:15 AM", guard: "Jean K.", sector: "Remera", status: "In Progress" },
-              { time: "08:00 AM", guard: "Patrick M.", sector: "Gisozi", status: "Completed" },
-            ].map((log, i) => (
-              <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border border-gray-100">
-                <div className="flex items-center gap-4">
-                  <div className="h-8 w-8 rounded-lg bg-emerald-100 flex items-center justify-center">
-                    <MapPinIcon className="h-4 w-4 text-emerald-600" />
+          {loading ? (
+            <div className="flex items-center justify-center p-6">
+              <Loader2 className="h-4 w-4 animate-spin text-emerald-500" />
+            </div>
+          ) : !stats || stats.recent_patrol_logs.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-4">No patrol logs yet</p>
+          ) : (
+            <div className="space-y-2">
+              {stats.recent_patrol_logs.map((log, i) => (
+                <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-gray-50 border border-gray-100">
+                  <div className="flex items-center gap-4">
+                    <div className="h-8 w-8 rounded-lg bg-emerald-100 flex items-center justify-center">
+                      <MapPinIcon className="h-4 w-4 text-emerald-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{log.guard_name}</p>
+                      {log.latitude != null && log.longitude != null && (
+                        <p className="text-xs text-gray-500">
+                          {log.latitude.toFixed(4)}, {log.longitude.toFixed(4)}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{log.guard}</p>
-                    <p className="text-xs text-gray-500">{log.sector}</p>
+                  <div className="text-right">
+                    {log.recorded_at && (
+                      <p className="text-xs text-gray-500">
+                        {new Date(log.recorded_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </p>
+                    )}
+                    <span className="inline-block px-2 py-0.5 rounded-full text-xs font-medium mt-1 bg-green-50 text-green-600">
+                      {log.status.replace("_", " ")}
+                    </span>
                   </div>
                 </div>
-                <div className="text-right">
-                  <p className="text-xs text-gray-500">{log.time}</p>
-                  <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium mt-1 ${
-                    log.status === "Completed" ? "bg-green-50 text-green-600" : "bg-blue-50 text-blue-600"
-                  }`}>
-                    {log.status}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
